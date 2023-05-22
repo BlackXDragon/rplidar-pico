@@ -9,8 +9,8 @@
 #include <time.h>
 #include <vector>
 
-#define RPLIDAR_DEBUG 1
-#define RPLIDAR_DEBUG_FUNCS 1
+#define RPLIDAR_DEBUG 0
+#define RPLIDAR_DEBUG_FUNCS 0
 
 #define DEBUG_PRINT(...) if (RPLIDAR_DEBUG) printf(__VA_ARGS__)
 
@@ -73,13 +73,11 @@ public:
 
 	void processData();
 	
-	void getScan(std::vector<uint16_t> &distances, std::vector<uint16_t> &angles);
-	void getScan(std::vector<uint16_t> &distances, std::vector<uint16_t> &angles, std::vector<uint8_t> &qualities);
+	void getScan(uint16_t* distances);
+	// void getScan(std::vector<uint16_t> &distances, std::vector<uint16_t> &angles, std::vector<uint8_t> &qualities);
 
 #if RPLIDAR_DEBUG_FUNCS
 	void debugPrintBuffer();
-
-	void debugPrintLength();
 #endif
 
 private:
@@ -123,13 +121,15 @@ private:
 	
 	uint8_t data[256];
 	
-	std::vector<uint16_t> _distances;
-	std::vector<uint16_t> _angles;
-	std::vector<uint8_t> _qualities;
+	uint16_t _distances[360];
+
+	// std::vector<uint16_t> _distances;
+	// std::vector<uint16_t> _angles;
+	// std::vector<uint8_t> _qualities;
 	
-	std::vector<uint16_t> new_distances;
-	std::vector<uint16_t> new_angles;
-	std::vector<uint8_t> new_qualities;
+	// std::vector<uint16_t> new_distances;
+	// std::vector<uint16_t> new_angles;
+	// std::vector<uint8_t> new_qualities;
 };
 
 } // namespace RPLidar

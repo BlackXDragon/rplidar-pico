@@ -5,7 +5,7 @@ int main() {
 	
 	sleep_ms(2000);
 
-	printf("RPLidar example\n");
+	// printf("RPLidar example\n");
 
 	RPLidar::RPLidar lidar = RPLidar::RPLidar();
 
@@ -14,22 +14,18 @@ int main() {
 	lidar.startScan();
 
 	// lidar.stopScan();
-	std::vector<uint16_t> angles;
-	std::vector<uint16_t> distances;
+	uint16_t distances[360];
 
 	while (true) {
 		// tight_loop_contents();
 		sleep_ms(10);
 		lidar.processData();
-		// Print the buffer contents
-		// printf("Buffer contents:\n");
-		// lidar.debugPrintBuffer();
-		// Print the length of distances
-		// lidar.debugPrintLength();
 		// Get and print the lidar distances
-		lidar.getScan(distances, angles);
-		for (int i = 0; i < distances.size(); i++) {
-			printf("%d: %d\n", angles[i], distances[i]);
+		lidar.getScan(distances);
+		for (int i = 0; i < 360; i++) {
+			
+			printf("%d, ", distances[i]);
 		}
+		printf("\n");
 	}
 }

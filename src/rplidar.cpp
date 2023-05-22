@@ -247,29 +247,19 @@ void RPLidar::processData() {
 	while (processBufferLen - processBufferIndex > 4) {
 		// DEBUG_PRINT("[RPLidar] %d\n", processBufferLen - processBufferIndex);
 		if (processBuffer[processBufferIndex + 1] & 0x01 && (((processBuffer[processBufferIndex + 0] & 0x02) >> 1) == !(processBuffer[processBufferIndex + 0] & 0x01))) {
-			if (processBuffer[processBufferIndex + 0] & 0x01) {
-				// New scan
-				_qualities.clear();
-				_distances.clear();
-				_angles.clear();
-				std::copy(new_qualities.begin(), new_qualities.end(), std::back_inserter(_qualities));
-				std::copy(new_distances.begin(), new_distances.end(), std::back_inserter(_distances));
-				std::copy(new_angles.begin(), new_angles.end(), std::back_inserter(_angles));
-				// Print the lengths of new_distances and _distances
-				DEBUG_PRINT("[RPLidar] %d %d\n", new_distances.size(), _distances.size());
-				new_qualities.clear();
-				new_distances.clear();
-				new_angles.clear();
-				DEBUG_PRINT("[RPLidar] New scan\n");
-				DEBUG_PRINT("[RPLidar] bytes: %#X %#X %#X %#X %#X\n", processBuffer[processBufferIndex + 0], processBuffer[processBufferIndex + 1], processBuffer[processBufferIndex + 2], processBuffer[processBufferIndex + 3], processBuffer[processBufferIndex + 4]);
-				DEBUG_PRINT("[RPLidar] lens: %d %d\n", processBufferLen, processBufferIndex);
-				if (processBufferLen > 10)
-					DEBUG_PRINT("[RPLidar] next bytes: %#X %#X %#X %#X %#X\n", processBuffer[processBufferIndex + 5], processBuffer[processBufferIndex + 6], processBuffer[processBufferIndex + 7], processBuffer[processBufferIndex + 8], processBuffer[processBufferIndex + 9]);
-			}
+			// if (processBuffer[processBufferIndex + 0] & 0x01) {
+			// 	// New scan
+			// 	DEBUG_PRINT("[RPLidar] New scan\n");
+			// }
 			// New datapoint
-			new_qualities.push_back(processBuffer[processBufferIndex + 0] >> 2);
-			new_angles.push_back(((processBuffer[processBufferIndex + 1] >> 1) | (processBuffer[processBufferIndex + 2] >> 1) << 7 | (processBuffer[processBufferIndex + 2] & 0x80 << 6)) / 64);
-			new_distances.push_back((processBuffer[processBufferIndex + 3] | (processBuffer[processBufferIndex + 4] << 8)) / 4);
+			int angle = ((processBuffer[processBufferIndex + 1] >> 1) | (processBuffer[processBufferIndex + 2] >> 1) << 7 | (processBuffer[processBufferIndex + 2] & 0x80 << 6)) / 64;
+			if (angle < 0 || angle > 360) {
+				// Invalid angle
+				// DEBUG_PRINT("[RPLidar] Invalid angle\n");
+				processBufferIndex += 5;
+				continue;
+			}
+			_distances[angle] = (processBuffer[processBufferIndex + 3] | (processBuffer[processBufferIndex + 4] << 8)) / 4;
 			// DEBUG_PRINT("[RPLidar] New datapoint %d\n", new_distances.size());
 			processBufferIndex += 5;
 		} else {
@@ -285,24 +275,23 @@ void RPLidar::processData() {
 	}
 }
 
-void RPLidar::getScan(std::vector<uint16_t> &distances, std::vector<uint16_t> &angles) {
-	std::vector<uint8_t> temp;
-	getScan(distances, angles, temp);
+void RPLidar::getScan(uint16_t* distances) {
+	std::copy(_distances, _distances + 359, distances);
 }
 
-void RPLidar::getScan(std::vector<uint16_t> &distances, std::vector<uint16_t> &angles, std::vector<uint8_t> &qualities) {
-	// distances.clear();
-	// angles.clear();
-	// qualities.clear();
-	// std::copy(_distances.begin(), _distances.end(), std::back_inserter(distances));
-	// std::copy(_angles.begin(), _angles.end(), std::back_inserter(angles));
-	// std::copy(_qualities.begin(), _qualities.end(), std::back_inserter(qualities));
-	distances = _distances;
-	angles = _angles;
-	qualities = _qualities;
-	DEBUG_PRINT("[RPLidar] getScan: %d %d\n", _distances.size(), _angles.size());
-	// DEBUG_PRINT("[RPLidar] %d %d\n", distances.size(), angles.size());
-}
+// void RPLidar::getScan(std::vector<uint16_t> &distances, std::vector<uint16_t> &angles, std::vector<uint8_t> &qualities) {
+// 	// distances.clear();
+// 	// angles.clear();
+// 	// qualities.clear();
+// 	// std::copy(_distances.begin(), _distances.end(), std::back_inserter(distances));
+// 	// std::copy(_angles.begin(), _angles.end(), std::back_inserter(angles));
+// 	// std::copy(_qualities.begin(), _qualities.end(), std::back_inserter(qualities));
+// 	distances = _distances;
+// 	angles = _angles;
+// 	qualities = _qualities;
+// 	DEBUG_PRINT("[RPLidar] getScan: %d %d\n", _distances.size(), _angles.size());
+// 	// DEBUG_PRINT("[RPLidar] %d %d\n", distances.size(), angles.size());
+// }
 
 #if RPLIDAR_DEBUG_FUNCS
 void RPLidar::debugPrintBuffer() {
@@ -310,10 +299,6 @@ void RPLidar::debugPrintBuffer() {
 		printf("%#X ", dataBuffer[i]);
 	}
 	printf("\n");
-}
-
-void RPLidar::debugPrintLength() {
-	printf("Distances len: %d\n", new_distances.size());
 }
 #endif
 
