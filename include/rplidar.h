@@ -9,6 +9,13 @@
 #include <time.h>
 #include <vector>
 
+#define NPKTS 3
+#define NPKTSOFFSET NPKTS * 5 + 1
+
+#if NPKTS < 3
+#error "NPKTS must be at least 3"
+#endif
+
 #define RPLIDAR_DEBUG 1
 #define RPLIDAR_DEBUG_FUNCS 1
 
@@ -66,15 +73,15 @@ public:
 	void reset();
 	void getDeviceInfo(uint8_t &model, uint16_t &firmware, uint8_t &hardware, uint8_t *serialNumber);
 	void getHealth(uint8_t &status, uint16_t &error);
-	void getSampleRate();
+	void getSampleRate(uint16_t &normal, uint16_t &express);
 	
 	void startExpressScan();
 	void forceScan();
 
 	void processData();
 	
-	void getScan(std::vector<float> &distances, std::vector<uint16_t> &angles);
-	void getScan(std::vector<float> &distances, std::vector<uint16_t> &angles, std::vector<uint8_t> &qualities);
+	void getScan(std::vector<uint16_t> &distances, std::vector<uint16_t> &angles);
+	void getScan(std::vector<uint16_t> &distances, std::vector<uint16_t> &angles, std::vector<uint8_t> &qualities);
 
 #if RPLIDAR_DEBUG_FUNCS
 	void debugPrintBuffer();
@@ -124,7 +131,7 @@ private:
 	
 	uint8_t data[256];
 	
-	std::vector<float> _distances;
+	std::vector<uint16_t> _distances;
 	std::vector<uint16_t> _angles;
 	std::vector<uint8_t> _qualities;
 	

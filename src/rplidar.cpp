@@ -220,8 +220,21 @@ void RPLidar::getHealth(uint8_t &status, uint16_t &error) {
 	error = data[1] | (data[2] << 8);
 }
 
-void RPLidar::getSampleRate() {
+void RPLidar::getSampleRate(uint16_t &normal, uint16_t &express) {
 	sendCommand(CMD_GET_SAMPLERATE);
+
+	// waitForResponse();
+
+	// // Check if the sample rate was received successfully
+	// if (!verifyResponseStartBytes()) {
+	// 	return;
+	// }
+
+	// Wait for 4 bytes of data
+	waitForData(4);
+
+	normal = data[0] | (data[1] << 8);
+	express = data[2] | (data[3] << 8);
 }
 
 void RPLidar::startExpressScan() {
@@ -242,7 +255,7 @@ void RPLidar::processData() {
 
 	// Verify that the first byte is start of scan
 	if (!((dataBuffer[0] & 0x01) && !((dataBuffer[0] & 0x02) >> 1) && (dataBuffer[1] & 0x01))) {
-		DEBUG_PRINT("[RPLidar] Invalid start of scan\n");
+		DEBUG_PRINT("[RPLidar] Invalid start of scan: %#X %#X\n", dataBuffer[0], dataBuffer[1]);
 		return;
 	}
 
@@ -256,7 +269,7 @@ void RPLidar::processData() {
 			_distances.clear();
 			_qualities.push_back(dataBuffer[processBufferIndex] >> 2);
 			_angles.push_back(((dataBuffer[processBufferIndex + 1] >> 1) | (dataBuffer[processBufferIndex + 2] << 7)) / 64);
-			_distances.push_back((dataBuffer[processBufferIndex + 3] | (dataBuffer[processBufferIndex + 4])) / 4000.0);
+			_distances.push_back((dataBuffer[processBufferIndex + 3] | (dataBuffer[processBufferIndex + 4])) / 4);
 			processBufferIndex += 5;
 		} else {
 			// Erroneous data
@@ -265,12 +278,12 @@ void RPLidar::processData() {
 	}
 }
 
-void RPLidar::getScan(std::vector<float> &distances, std::vector<uint16_t> &angles) {
+void RPLidar::getScan(std::vector<uint16_t> &distances, std::vector<uint16_t> &angles) {
 	std::vector<uint8_t> temp;
 	getScan(distances, angles, temp);
 }
 
-void RPLidar::getScan(std::vector<float> &distances, std::vector<uint16_t> &angles, std::vector<uint8_t> &qualities) {
+void RPLidar::getScan(std::vector<uint16_t> &distances, std::vector<uint16_t> &angles, std::vector<uint8_t> &qualities) {
 	// distances.clear();
 	// angles.clear();
 	// qualities.clear();
@@ -309,19 +322,20 @@ void RPLidar::uartIRQHandler() {
 		if (rpl->dataBufferIndex > (RPLIDAR_BUFFER_SIZE - 1)) {
 			// DEBUG_PRINT("[RPLidar] Buffer overflow\n");
 			rpl->dataBufferIndex = 0;
-			if (rpl->isScanning) {
-				std::copy(rpl->dataBuffer + rpl->processBufferLen, rpl->dataBuffer + RPLIDAR_BUFFER_SIZE, rpl->dataBuffer);
-				rpl->dataBufferIndex = RPLIDAR_BUFFER_SIZE - rpl->processBufferLen;
-			}
+			// if (rpl->isScanning) {
+			// 	std::copy(rpl->dataBuffer + rpl->processBufferLen, rpl->dataBuffer + RPLIDAR_BUFFER_SIZE, rpl->dataBuffer);
+			// 	rpl->dataBufferIndex = RPLIDAR_BUFFER_SIZE - rpl->processBufferLen;
+			// }
 		}
 		
-		if (rpl->waitingForResponse && rpl->dataBufferIndex == 7 && rpl->dataBuffer[0] == 0xA5 && rpl->dataBuffer[1] == 0x5A) {
-			// Received a response
-			std::copy(rpl->dataBuffer, rpl->dataBuffer + 7, rpl->response);
-			rpl->waitingForResponse = false;
-			rpl->responseReceived = true;
-			rpl->dataBufferIndex = 0;
-			return;
+		if (rpl->waitingForResponse) {
+			if (rpl->dataBuffer[rpl->dataBufferIndex - 7] == 0xA5 && rpl->dataBuffer[rpl->dataBufferIndex - 6] == 0x5A) {
+				// Received the response
+				std::copy(rpl->dataBuffer + rpl->dataBufferIndex - 7, rpl->dataBuffer + rpl->dataBufferIndex, rpl->response);
+				rpl->waitingForResponse = false;
+				rpl->responseReceived = true;
+				rpl->dataBufferIndex = 0;
+			}
 		}
 
 		if (rpl->waitingForData) {
@@ -337,33 +351,37 @@ void RPLidar::uartIRQHandler() {
 		}
 
 		if (rpl->isScanning) {
-			switch (rpl->scanPacketOffset) {
-				case 0:
+			switch (rpl->dataBufferIndex % 5) {
+				case 1:
 					if ((rpl->dataBuffer[rpl->dataBufferIndex - 1] & 0x01) == !((rpl->dataBuffer[rpl->dataBufferIndex - 1] & 0x02) >> 1)) {
-						// DEBUG_PRINT("[RPLidar] New packet start\n");
-						rpl->scanPacketOffset = 1;
-						if (rpl->dataBufferIndex >= 5) {
-							if (rpl->dataBuffer[rpl->dataBufferIndex - 6] & 0x01) {
+						DEBUG_PRINT("[RPLidar] New packet start: %#X %d\n", rpl->dataBuffer[rpl->dataBufferIndex - 1], (rpl->dataBuffer[rpl->dataBufferIndex - 1] & 0x01));
+						if (rpl->dataBufferIndex >= NPKTSOFFSET) {
+							if ((rpl->dataBuffer[rpl->dataBufferIndex - NPKTSOFFSET] & 0x01) && !(rpl->dataBuffer[rpl->dataBufferIndex - NPKTSOFFSET] & 0x02 >> 1) && (rpl->dataBuffer[rpl->dataBufferIndex - NPKTSOFFSET + 1] & 0x01) && !(rpl->dataBuffer[rpl->dataBufferIndex - NPKTSOFFSET + 5] & 0x01) && (rpl->dataBuffer[rpl->dataBufferIndex - NPKTSOFFSET + 6] & 0x01)) {
 								// New scan
-								DEBUG_PRINT("[RPLidar] New scan %d\n", rpl->dataBufferIndex - 6);
-								std::copy(rpl->dataBuffer, rpl->dataBuffer + rpl->dataBufferIndex - 6, rpl->processBuffer);
-								rpl->processBufferLen = rpl->dataBufferIndex - 6;
+								DEBUG_PRINT("[RPLidar] New scan %d\n", rpl->dataBufferIndex - NPKTSOFFSET);
+								DEBUG_PRINT("[RPLidar] %#X %#X %#X %#X\n", rpl->dataBuffer[rpl->dataBufferIndex - NPKTSOFFSET], rpl->dataBuffer[rpl->dataBufferIndex - NPKTSOFFSET + 1], rpl->dataBuffer[rpl->dataBufferIndex - NPKTSOFFSET + 5], rpl->dataBuffer[rpl->dataBufferIndex - NPKTSOFFSET + 6]);
+								std::copy(rpl->dataBuffer, rpl->dataBuffer + rpl->dataBufferIndex - NPKTSOFFSET, rpl->processBuffer);
+								rpl->processBufferLen = rpl->dataBufferIndex - NPKTSOFFSET;
 								rpl->newScan = true;
-								std::copy(rpl->dataBuffer + rpl->dataBufferIndex - 6, rpl->dataBuffer + rpl->dataBufferIndex, rpl->dataBuffer);
-								rpl->dataBufferIndex = 6;
+								std::copy(rpl->dataBuffer + rpl->dataBufferIndex - NPKTSOFFSET, rpl->dataBuffer + rpl->dataBufferIndex, rpl->dataBuffer);
+								rpl->dataBufferIndex = NPKTSOFFSET;
 							}
 						}
+					} else {
+						DEBUG_PRINT("Error in first byte: %#X %d\n", rpl->dataBuffer[rpl->dataBufferIndex - 1], rpl->dataBufferIndex);
+						rpl->dataBufferIndex--;
 					}
 					break;
-				case 1:
-					if (rpl->dataBuffer[rpl->dataBufferIndex - 1] & 0x01)
-						rpl->scanPacketOffset = 2;
-					else
-						rpl->scanPacketOffset = 0;
+				case 2:
+					if (!(rpl->dataBuffer[rpl->dataBufferIndex - 1] & 0x01)) {
+						DEBUG_PRINT("Error in second byte: %#X %#X %d\n", rpl->dataBuffer[rpl->dataBufferIndex - 2], rpl->dataBuffer[rpl->dataBufferIndex - 1], rpl->dataBufferIndex);
+						rpl->dataBufferIndex--;
+					} else {
+						DEBUG_PRINT("[RPLidar] Packet byte 2: %#X\n", rpl->dataBuffer[rpl->dataBufferIndex - 1]);
+					}
 					break;
 				default:
-					rpl->scanPacketOffset++;
-					rpl->scanPacketOffset %= 5;
+					DEBUG_PRINT("[RPLidar] Packet byte %d: %#X\n", rpl->dataBufferIndex % 5, rpl->dataBuffer[rpl->dataBufferIndex - 1]);
 					break;
 			}
 		}

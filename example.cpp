@@ -11,11 +11,15 @@ int main() {
 
 	lidar.reset();
 
+	uint16_t normalRate, expressRate;
+	lidar.getSampleRate(normalRate, expressRate);
+	printf("Normal rate: %d\nExpress rate: %d\n", normalRate, expressRate);
+
 	lidar.startScan();
 
 	// lidar.stopScan();
 	std::vector<uint16_t> angles;
-	std::vector<float> distances;
+	std::vector<uint16_t> distances;
 
 	while (true) {
 		// tight_loop_contents();
