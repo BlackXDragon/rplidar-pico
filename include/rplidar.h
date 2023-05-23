@@ -73,8 +73,8 @@ public:
 
 	void processData();
 	
-	void getScan(std::vector<uint16_t> &distances, std::vector<uint16_t> &angles);
-	void getScan(std::vector<uint16_t> &distances, std::vector<uint16_t> &angles, std::vector<uint8_t> &qualities);
+	void getScan(std::vector<float> &distances, std::vector<uint16_t> &angles);
+	void getScan(std::vector<float> &distances, std::vector<uint16_t> &angles, std::vector<uint8_t> &qualities);
 
 #if RPLIDAR_DEBUG_FUNCS
 	void debugPrintBuffer();
@@ -115,6 +115,7 @@ private:
 	uint8_t dataBuffer[RPLIDAR_BUFFER_SIZE];
 	uint16_t dataBufferIndex = 0;
 
+	bool newScan = false;
 	uint8_t processBuffer[RPLIDAR_BUFFER_SIZE];
 	uint16_t processBufferIndex = 0;
 	uint16_t processBufferLen = 0;
@@ -123,7 +124,7 @@ private:
 	
 	uint8_t data[256];
 	
-	std::vector<uint16_t> _distances;
+	std::vector<float> _distances;
 	std::vector<uint16_t> _angles;
 	std::vector<uint8_t> _qualities;
 	

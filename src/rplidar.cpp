@@ -233,64 +233,44 @@ void RPLidar::forceScan() {
 }
 
 void RPLidar::processData() {
-	if (!(isScanning || isForcingScan || isExpressScanning)) {
+	if (!(isScanning || isForcingScan || isExpressScanning))
+		return;
+	if (!newScan)
+		return;
+	
+	newScan = false;
+
+	// Verify that the first byte is start of scan
+	if (!((dataBuffer[0] & 0x01) && !((dataBuffer[0] & 0x02) >> 1) && (dataBuffer[1] & 0x01))) {
+		DEBUG_PRINT("[RPLidar] Invalid start of scan\n");
 		return;
 	}
-	if (dataBufferIndex < 5) {
-		return;
-	}
-	processBufferLen = dataBufferIndex;
-	std::copy(dataBuffer, dataBuffer + processBufferLen, processBuffer);
-	dataBufferIndex = 0;
-	// DEBUG_PRINT("[RPLidar] %d\n", processBufferLen);
+
+	// DEBUG_PRINT("[RPLidar] Processing data\n");
 	processBufferIndex = 0;
 	while (processBufferLen - processBufferIndex > 4) {
-		// DEBUG_PRINT("[RPLidar] %d\n", processBufferLen - processBufferIndex);
-		if (processBuffer[processBufferIndex + 1] & 0x01 && (((processBuffer[processBufferIndex + 0] & 0x02) >> 1) == !(processBuffer[processBufferIndex + 0] & 0x01))) {
-			if (processBuffer[processBufferIndex + 0] & 0x01) {
-				// New scan
-				_qualities.clear();
-				_distances.clear();
-				_angles.clear();
-				std::copy(new_qualities.begin(), new_qualities.end(), std::back_inserter(_qualities));
-				std::copy(new_distances.begin(), new_distances.end(), std::back_inserter(_distances));
-				std::copy(new_angles.begin(), new_angles.end(), std::back_inserter(_angles));
-				// Print the lengths of new_distances and _distances
-				DEBUG_PRINT("[RPLidar] %d %d\n", new_distances.size(), _distances.size());
-				new_qualities.clear();
-				new_distances.clear();
-				new_angles.clear();
-				DEBUG_PRINT("[RPLidar] New scan\n");
-				DEBUG_PRINT("[RPLidar] bytes: %#X %#X %#X %#X %#X\n", processBuffer[processBufferIndex + 0], processBuffer[processBufferIndex + 1], processBuffer[processBufferIndex + 2], processBuffer[processBufferIndex + 3], processBuffer[processBufferIndex + 4]);
-				DEBUG_PRINT("[RPLidar] lens: %d %d\n", processBufferLen, processBufferIndex);
-				if (processBufferLen > 10)
-					DEBUG_PRINT("[RPLidar] next bytes: %#X %#X %#X %#X %#X\n", processBuffer[processBufferIndex + 5], processBuffer[processBufferIndex + 6], processBuffer[processBufferIndex + 7], processBuffer[processBufferIndex + 8], processBuffer[processBufferIndex + 9]);
-			}
-			// New datapoint
-			new_qualities.push_back(processBuffer[processBufferIndex + 0] >> 2);
-			new_angles.push_back(((processBuffer[processBufferIndex + 1] >> 1) | (processBuffer[processBufferIndex + 2] >> 1) << 7 | (processBuffer[processBufferIndex + 2] & 0x80 << 6)) / 64);
-			new_distances.push_back((processBuffer[processBufferIndex + 3] | (processBuffer[processBufferIndex + 4] << 8)) / 4);
-			// DEBUG_PRINT("[RPLidar] New datapoint %d\n", new_distances.size());
+		// Verify the checkbits
+		if ((dataBuffer[processBufferIndex] & 0x01) == !((dataBuffer[processBufferIndex] & 0x02) >> 1) && (dataBuffer[processBufferIndex + 1] & 0x01)) {
+			_qualities.clear();
+			_angles.clear();
+			_distances.clear();
+			_qualities.push_back(dataBuffer[processBufferIndex] >> 2);
+			_angles.push_back(((dataBuffer[processBufferIndex + 1] >> 1) | (dataBuffer[processBufferIndex + 2] << 7)) / 64);
+			_distances.push_back((dataBuffer[processBufferIndex + 3] | (dataBuffer[processBufferIndex + 4])) / 4000.0);
 			processBufferIndex += 5;
 		} else {
-			// Invalid data
-			// DEBUG_PRINT("[RPLidar] Invalid data\n");
-			// DEBUG_PRINT("[RPLidar] bytes: %#X %#X %#X %#X %#X\n", processBuffer[processBufferIndex + 0], processBuffer[processBufferIndex + 1], processBuffer[processBufferIndex + 2], processBuffer[processBufferIndex + 3], processBuffer[processBufferIndex + 4]);
-			// for (int i = processBufferIndex; i < processBufferIndex + 5; i++) {
-			// 	DEBUG_PRINT(" %#X", processBuffer[i]);
-			// }
-			// DEBUG_PRINT("\n");
-			processBufferIndex++;
+			// Erroneous data
+			DEBUG_PRINT("[RPLidar] Invalid data: %#X %#X\n", dataBuffer[processBufferIndex], dataBuffer[processBufferIndex + 1]);
 		}
 	}
 }
 
-void RPLidar::getScan(std::vector<uint16_t> &distances, std::vector<uint16_t> &angles) {
+void RPLidar::getScan(std::vector<float> &distances, std::vector<uint16_t> &angles) {
 	std::vector<uint8_t> temp;
 	getScan(distances, angles, temp);
 }
 
-void RPLidar::getScan(std::vector<uint16_t> &distances, std::vector<uint16_t> &angles, std::vector<uint8_t> &qualities) {
+void RPLidar::getScan(std::vector<float> &distances, std::vector<uint16_t> &angles, std::vector<uint8_t> &qualities) {
 	// distances.clear();
 	// angles.clear();
 	// qualities.clear();
@@ -300,7 +280,7 @@ void RPLidar::getScan(std::vector<uint16_t> &distances, std::vector<uint16_t> &a
 	distances = _distances;
 	angles = _angles;
 	qualities = _qualities;
-	DEBUG_PRINT("[RPLidar] getScan: %d %d\n", _distances.size(), _angles.size());
+	// DEBUG_PRINT("[RPLidar] getScan: %d %d\n", _distances.size(), _angles.size());
 	// DEBUG_PRINT("[RPLidar] %d %d\n", distances.size(), angles.size());
 }
 
@@ -318,95 +298,75 @@ void RPLidar::debugPrintLength() {
 #endif
 
 void RPLidar::uartIRQHandler() {
+	RPLidar *rpl = _singleton;
 	// DEBUG_PRINT("[RPLidar] UART IRQ\n");
-	while (uart_is_readable(_singleton->_interface)) {
+	while (uart_is_readable(rpl->_interface)) {
 
-        _singleton->dataBuffer[_singleton->dataBufferIndex++] = uart_getc(_singleton->_interface);
+        rpl->dataBuffer[rpl->dataBufferIndex++] = uart_getc(rpl->_interface);
 
-		// DEBUG_PRINT("[RPLidar] Received byte: %#X\n", _singleton->dataBuffer[_singleton->dataBufferIndex - 1]);
+		// DEBUG_PRINT("[RPLidar] Received byte: %#X\n", rpl->dataBuffer[rpl->dataBufferIndex - 1]);
 
-		if (_singleton->dataBufferIndex > (RPLIDAR_BUFFER_SIZE - 1)) {
+		if (rpl->dataBufferIndex > (RPLIDAR_BUFFER_SIZE - 1)) {
 			// DEBUG_PRINT("[RPLidar] Buffer overflow\n");
-			_singleton->dataBufferIndex = 0;
-			if (_singleton->isScanning) {
-				std::copy(_singleton->dataBuffer + _singleton->processBufferLen, _singleton->dataBuffer + RPLIDAR_BUFFER_SIZE, _singleton->dataBuffer);
-				_singleton->dataBufferIndex = RPLIDAR_BUFFER_SIZE - _singleton->processBufferLen;
+			rpl->dataBufferIndex = 0;
+			if (rpl->isScanning) {
+				std::copy(rpl->dataBuffer + rpl->processBufferLen, rpl->dataBuffer + RPLIDAR_BUFFER_SIZE, rpl->dataBuffer);
+				rpl->dataBufferIndex = RPLIDAR_BUFFER_SIZE - rpl->processBufferLen;
 			}
 		}
 		
-		if (_singleton->waitingForResponse && _singleton->dataBufferIndex == 7 && _singleton->dataBuffer[0] == 0xA5 && _singleton->dataBuffer[1] == 0x5A) {
+		if (rpl->waitingForResponse && rpl->dataBufferIndex == 7 && rpl->dataBuffer[0] == 0xA5 && rpl->dataBuffer[1] == 0x5A) {
 			// Received a response
-			std::copy(_singleton->dataBuffer, _singleton->dataBuffer + 7, _singleton->response);
-			_singleton->waitingForResponse = false;
-			_singleton->responseReceived = true;
-			_singleton->dataBufferIndex = 0;
+			std::copy(rpl->dataBuffer, rpl->dataBuffer + 7, rpl->response);
+			rpl->waitingForResponse = false;
+			rpl->responseReceived = true;
+			rpl->dataBufferIndex = 0;
 			return;
 		}
 
-		if (_singleton->waitingForData) {
-			_singleton->dataBytesRemaining--;
-			if (_singleton->dataBytesRemaining == 0) {
+		if (rpl->waitingForData) {
+			rpl->dataBytesRemaining--;
+			if (rpl->dataBytesRemaining == 0) {
 				// Received all the data
-				std::copy(_singleton->dataBuffer, _singleton->dataBuffer + _singleton->dataBufferIndex, _singleton->data);
-				_singleton->waitingForData = false;
-				_singleton->dataReceived = true;
-				_singleton->dataBufferIndex = 0;
+				std::copy(rpl->dataBuffer, rpl->dataBuffer + rpl->dataBufferIndex, rpl->data);
+				rpl->waitingForData = false;
+				rpl->dataReceived = true;
+				rpl->dataBufferIndex = 0;
 			}
 			return;
 		}
 
-		// _singleton->processBufferIndex = 0;
-		// if (_singleton->isScanning) {
-		// 	DEBUG_PRINT("[RPLidar] Scanning %d\n", _singleton->dataBufferIndex);
-		// 	// bool processed = false;
-		// 	while (_singleton->dataBufferIndex > 4) {
-		// 		DEBUG_PRINT("[RPLidar] dbi %d\n", _singleton->dataBufferIndex);
-		// 		if (_singleton->dataBuffer[_singleton->processBufferIndex + 1] & 0x01 && (((_singleton->dataBuffer[_singleton->processBufferIndex + 0] & 0x02) >> 1) == !(_singleton->dataBuffer[_singleton->processBufferIndex + 0] & 0x01))) {
-		// 			// processed = true;
-		// 			if (_singleton->dataBuffer[_singleton->processBufferIndex + 0] & 0x01) {
-		// 				// New scan
-		// 				_singleton->_qualities.clear();
-		// 				_singleton->_distances.clear();
-		// 				_singleton->_angles.clear();
-		// 				std::copy(_singleton->new_qualities.begin(), _singleton->new_qualities.end(), std::back_inserter(_singleton->_qualities));
-		// 				std::copy(_singleton->new_distances.begin(), _singleton->new_distances.end(), std::back_inserter(_singleton->_distances));
-		// 				std::copy(_singleton->new_angles.begin(), _singleton->new_angles.end(), std::back_inserter(_singleton->_angles));
-		// 				// Print the lengths of new_distances and _distances
-		// 				DEBUG_PRINT("[RPLidar] %d %d\n", _singleton->new_distances.size(), _singleton->_distances.size());
-		// 				_singleton->new_qualities.clear();
-		// 				_singleton->new_distances.clear();
-		// 				_singleton->new_angles.clear();
-		// 				DEBUG_PRINT("[RPLidar] New scan\n");
-		// 				DEBUG_PRINT("[RPLidar] bytes: %#X %#X %#X %#X %#X\n", _singleton->dataBuffer[_singleton->processBufferIndex + 0], _singleton->dataBuffer[_singleton->processBufferIndex + 1], _singleton->dataBuffer[_singleton->processBufferIndex + 2], _singleton->dataBuffer[_singleton->processBufferIndex + 3], _singleton->dataBuffer[_singleton->processBufferIndex + 4]);
-		// 				DEBUG_PRINT("[RPLidar] lens: %d %d\n", _singleton->processBufferLen, _singleton->processBufferIndex);
-		// 				if (_singleton->processBufferLen > 10)
-		// 					DEBUG_PRINT("[RPLidar] next bytes: %#X %#X %#X %#X %#X\n", _singleton->dataBuffer[_singleton->processBufferIndex + 5], _singleton->dataBuffer[_singleton->processBufferIndex + 6], _singleton->dataBuffer[_singleton->processBufferIndex + 7], _singleton->dataBuffer[_singleton->processBufferIndex + 8], _singleton->dataBuffer[_singleton->processBufferIndex + 9]);
-		// 			}
-		// 			// New datapoint
-		// 			_singleton->new_qualities.push_back(_singleton->dataBuffer[_singleton->processBufferIndex + 0] >> 2);
-		// 			_singleton->new_angles.push_back(((_singleton->dataBuffer[_singleton->processBufferIndex + 1] >> 1) | (_singleton->dataBuffer[_singleton->processBufferIndex + 2] >> 1) << 7 | (_singleton->dataBuffer[_singleton->processBufferIndex + 2] & 0x80 << 6)) / 64);
-		// 			_singleton->new_distances.push_back((_singleton->dataBuffer[_singleton->processBufferIndex + 3] | (_singleton->dataBuffer[_singleton->processBufferIndex + 4] << 8)) / 4);
-		// 			DEBUG_PRINT("[RPLidar] New datapoint %d\n", _singleton->new_distances.size());
-		// 			_singleton->processBufferIndex += 5;
-		// 		} else {
-		// 			// Invalid data
-		// 			DEBUG_PRINT("[RPLidar] Invalid data\n");
-		// 			DEBUG_PRINT("[RPLidar] bytes: %#X %#X %#X %#X %#X\n", _singleton->dataBuffer[_singleton->processBufferIndex + 0], _singleton->dataBuffer[_singleton->processBufferIndex + 1], _singleton->dataBuffer[_singleton->processBufferIndex + 2], _singleton->dataBuffer[_singleton->processBufferIndex + 3], _singleton->dataBuffer[_singleton->processBufferIndex + 4]);
-		// 			// for (int i = processBufferIndex; i < processBufferIndex + 5; i++) {
-		// 			// 	DEBUG_PRINT(" %#X", dataBuffer[i]);
-		// 			// }
-		// 			// DEBUG_PRINT("\n");
-		// 			_singleton->processBufferIndex++;
-		// 		}
-		// 	}
-		// 	// if (processed) {
-		// 	// 	// Remove processed data
-		// 	// 	std::copy(_singleton->dataBuffer + _singleton->processBufferIndex, _singleton->dataBuffer + _singleton->dataBufferIndex, _singleton->dataBuffer);
-		// 	// 	_singleton->dataBufferIndex -= _singleton->processBufferIndex;
-		// 	// }
-		// }
-
-
+		if (rpl->isScanning) {
+			switch (rpl->scanPacketOffset) {
+				case 0:
+					if ((rpl->dataBuffer[rpl->dataBufferIndex - 1] & 0x01) == !((rpl->dataBuffer[rpl->dataBufferIndex - 1] & 0x02) >> 1)) {
+						// DEBUG_PRINT("[RPLidar] New packet start\n");
+						rpl->scanPacketOffset = 1;
+						if (rpl->dataBufferIndex >= 5) {
+							if (rpl->dataBuffer[rpl->dataBufferIndex - 6] & 0x01) {
+								// New scan
+								DEBUG_PRINT("[RPLidar] New scan %d\n", rpl->dataBufferIndex - 6);
+								std::copy(rpl->dataBuffer, rpl->dataBuffer + rpl->dataBufferIndex - 6, rpl->processBuffer);
+								rpl->processBufferLen = rpl->dataBufferIndex - 6;
+								rpl->newScan = true;
+								std::copy(rpl->dataBuffer + rpl->dataBufferIndex - 6, rpl->dataBuffer + rpl->dataBufferIndex, rpl->dataBuffer);
+								rpl->dataBufferIndex = 6;
+							}
+						}
+					}
+					break;
+				case 1:
+					if (rpl->dataBuffer[rpl->dataBufferIndex - 1] & 0x01)
+						rpl->scanPacketOffset = 2;
+					else
+						rpl->scanPacketOffset = 0;
+					break;
+				default:
+					rpl->scanPacketOffset++;
+					rpl->scanPacketOffset %= 5;
+					break;
+			}
+		}
     }
 }
 

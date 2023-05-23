@@ -15,7 +15,7 @@ int main() {
 
 	// lidar.stopScan();
 	std::vector<uint16_t> angles;
-	std::vector<uint16_t> distances;
+	std::vector<float> distances;
 
 	while (true) {
 		// tight_loop_contents();
