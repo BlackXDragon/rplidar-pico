@@ -12,6 +12,8 @@
 #define RPLIDAR_DEBUG 0
 #define RPLIDAR_DEBUG_FUNCS 0
 
+#define N_BINS 720
+
 #define DEBUG_PRINT(...) if (RPLIDAR_DEBUG) printf(__VA_ARGS__)
 
 #define RPLIDAR_DEFAULT_INTERFACE uart0
@@ -73,8 +75,7 @@ public:
 
 	void processData();
 	
-	void getScan(uint16_t* distances);
-	// void getScan(std::vector<uint16_t> &distances, std::vector<uint16_t> &angles, std::vector<uint8_t> &qualities);
+	void getDistances(float* distances);
 
 #if RPLIDAR_DEBUG_FUNCS
 	void debugPrintBuffer();
@@ -101,7 +102,6 @@ private:
 	bool isScanning = false;
 	bool isExpressScanning = false;
 	bool isForcingScan = false;
-	uint scanPacketOffset = 0;
 
 	bool waitingForResponse = false;
 	bool responseReceived = false;
@@ -113,23 +113,11 @@ private:
 	uint8_t dataBuffer[RPLIDAR_BUFFER_SIZE];
 	uint16_t dataBufferIndex = 0;
 
-	uint8_t processBuffer[RPLIDAR_BUFFER_SIZE];
-	uint16_t processBufferIndex = 0;
-	uint16_t processBufferLen = 0;
-
 	uint8_t response[7];
 	
 	uint8_t data[256];
 	
-	uint16_t _distances[360];
-
-	// std::vector<uint16_t> _distances;
-	// std::vector<uint16_t> _angles;
-	// std::vector<uint8_t> _qualities;
-	
-	// std::vector<uint16_t> new_distances;
-	// std::vector<uint16_t> new_angles;
-	// std::vector<uint8_t> new_qualities;
+	float _distances[N_BINS];
 };
 
 } // namespace RPLidar
