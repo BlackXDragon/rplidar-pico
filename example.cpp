@@ -28,8 +28,8 @@ int main() {
 		// lidar.debugPrintLength();
 		// Get and print the lidar distances
 		lidar.getScan(distances, angles);
-		for (int i = 0; i < distances.size(); i++) {
-			printf("%d: %d\n", angles[i], distances[i]);
-		}
+		// for (int i = 0; i < distances.size(); i++) {
+		// 	printf("%d: %d\n", angles[i], distances[i]);
+		// }
 	}
 }

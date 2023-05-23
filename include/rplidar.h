@@ -83,6 +83,9 @@ public:
 #endif
 
 private:
+	bool checkScanBits(int i);
+	int getPktIndex();
+
 	static void uartIRQHandler();
 
 	void sendCommand(Command cmd, uint8_t *payload = nullptr, uint8_t payloadSize = 0);

@@ -232,23 +232,58 @@ void RPLidar::forceScan() {
 	sendCommand(CMD_FORCE_SCAN);
 }
 
+bool RPLidar::checkScanBits(int i) {
+	bool pkt1 = processBuffer[i+1] & 0x01 && (((processBuffer[i+0] & 0x02) >> 1) == !(processBuffer[i+0] & 0x01));
+	bool pkt2 = processBuffer[i+6] & 0x01 && (((processBuffer[i+5] & 0x02) >> 1) == !(processBuffer[i+5] & 0x01));
+	bool pkt3 = processBuffer[i+11] & 0x01 && (((processBuffer[i+10] & 0x02) >> 1) == !(processBuffer[i+10] & 0x01));
+	bool pkt4 = processBuffer[i+16] & 0x01 && (((processBuffer[i+15] & 0x02) >> 1) == !(processBuffer[i+15] & 0x01));
+	DEBUG_PRINT("[RPLidar] Check scan bits:\n");
+	DEBUG_PRINT("%#X %#X %d %d\n", processBuffer[i+0], processBuffer[i+1], pkt1, processBuffer[i+0] & 0x01);
+	DEBUG_PRINT("%#X %#X %d %d\n", processBuffer[i+5], processBuffer[i+6], pkt2, processBuffer[i+5] & 0x01);
+	DEBUG_PRINT("%#X %#X %d %d\n", processBuffer[i+10], processBuffer[i+11], pkt3, processBuffer[i+10] & 0x01);
+	DEBUG_PRINT("%#X %#X %d %d\n", processBuffer[i+15], processBuffer[i+16], pkt4, processBuffer[i+15] & 0x01);
+	return pkt1 && pkt2 && pkt3 && pkt4;
+}
+
+int RPLidar::getPktIndex() {
+	DEBUG_PRINT("[RPLidar] Get pkt index\n");
+	// Debug print the whole processBuffer
+	for (int i = 0; i < processBufferLen; i++) {
+		DEBUG_PRINT("%#X ", processBuffer[i]);
+	}
+	DEBUG_PRINT("\n");
+	for (int i = 0; i < processBufferLen - 20; i++) {
+		if (checkScanBits(i)) {
+			DEBUG_PRINT("[RPLidar] Found packet at %d\n", i);
+			return i;
+		}
+	}
+	return -1;
+}
+
 void RPLidar::processData() {
 	if (!(isScanning || isForcingScan || isExpressScanning)) {
 		return;
 	}
-	if (dataBufferIndex < 5) {
+	if (dataBufferIndex < 25) {
 		return;
 	}
 	processBufferLen = dataBufferIndex;
 	std::copy(dataBuffer, dataBuffer + processBufferLen, processBuffer);
 	dataBufferIndex = 0;
 	// DEBUG_PRINT("[RPLidar] %d\n", processBufferLen);
-	processBufferIndex = 0;
+	processBufferIndex = getPktIndex();
+	if (processBufferIndex == -1) {
+		DEBUG_PRINT("[RPLidar] No packet found\n");
+		return;
+	}
 	while (processBufferLen - processBufferIndex > 4) {
 		// DEBUG_PRINT("[RPLidar] %d\n", processBufferLen - processBufferIndex);
 		if (processBuffer[processBufferIndex + 1] & 0x01 && (((processBuffer[processBufferIndex + 0] & 0x02) >> 1) == !(processBuffer[processBufferIndex + 0] & 0x01))) {
 			if (processBuffer[processBufferIndex + 0] & 0x01) {
 				// New scan
+				if (new_distances.size() == 1)
+					continue;
 				_qualities.clear();
 				_distances.clear();
 				_angles.clear();
